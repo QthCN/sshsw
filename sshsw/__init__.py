@@ -61,6 +61,7 @@ class SWController(object):
         client = self._get_client()
         chan = client.invoke_shell()
         chan.settimeout(0.0)
+        ssh_disconnected = False
 
         output = ""
 
@@ -75,18 +76,22 @@ class SWController(object):
             chan.settimeout(0.0)
 
             while True:
-                r, w, e = select.select([chan], [], [])
-                if chan in r:
+                while True:
                     try:
-                        x = u(chan.recv(1024))
-                        if len(x) == 0:
+                        rx = u(chan.recv(1024))
+                        if len(rx) == 0:
+                            ssh_disconnected = True
                             break
-                        output += x
-                    except socket.timeout:
-                        pass
+                    except Exception as e:
+                        break
+                    output += rx
+
+                if ssh_disconnected:
+                    break
 
                 try:
                     x = self.queue.get(timeout=0.1)
+                    print x
                     chan.send(x)
                 except Exception as e:
                     pass
@@ -101,8 +106,8 @@ class SWController(object):
 
 
 if __name__ == "__main__":
-    c = SWController(sw_host="172.18.9.2",
+    c = SWController(sw_host="127.0.0.1",
                      sw_port=22,
-                     sw_user="testuser",
-                     sw_passwd="testpassword")
-    print c.exec_cmds(cmds=["enable", "testpassword", "exit"])
+                     sw_user="root",
+                     sw_passwd="rootroot")
+    print c.exec_cmds(cmds=["cat /tmp/messages", "pwd", "ls"])
