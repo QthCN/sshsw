@@ -77,6 +77,8 @@ class SWController(object):
                     output += rx
 
                 if ssh_disconnected:
+                    chan.close()
+                    client.close()
                     return result
 
                 for c in cmd+"\n":
@@ -154,6 +156,13 @@ class SWController(object):
         ))
         cmds.append("exit")
         cmds.append("exit")
+        cmds.append("exit")
+
+        self.exec_commands(cmds, False)
+
+    def clear_arp_cache(self):
+        cmds = self.get_enable_cmds()
+        cmds.append("clear arp-cache")
         cmds.append("exit")
 
         self.exec_commands(cmds, False)

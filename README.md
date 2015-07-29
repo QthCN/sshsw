@@ -16,5 +16,6 @@ cmds中可以加入需要在交换机上执行的命令。
     c.add_simple_acl("test_acl", "gigabitethernet 1/0/14",
                      "10.9.9.9", "192.0.0.0", "255.0.0.0",
                      "in")
+    c.clear_arp_cache()
     c.exec_commands(cmds=["enable", "123456", "show run", "exit"])
 ```
