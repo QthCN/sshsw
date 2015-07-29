@@ -3,11 +3,10 @@
 
 import logging
 import Queue
-import select
 import socket
+import time
 
 import paramiko
-from paramiko.py3compat import u
 
 
 class SWController(object):
@@ -57,28 +56,19 @@ class SWController(object):
         except Exception as e:
             logging.exception(e)
 
-    def exec_cmds(self, cmds=[]):
+    def exec_commands(self, cmds=[], wait_output=True):
+        cmds.append("exit")
         client = self._get_client()
         chan = client.invoke_shell()
         chan.settimeout(0.0)
         ssh_disconnected = False
-
-        output = ""
-
-        cmds.append("exit")
-
-        for cmd in cmds:
-            for c in cmd:
-                self.queue.put(c)
-            self.queue.put("\n")
-
-        try:
-            chan.settimeout(0.0)
-
-            while True:
+        result = ""
+        if wait_output:
+            for cmd in cmds:
+                output = ""
                 while True:
                     try:
-                        rx = u(chan.recv(1024))
+                        rx = chan.recv(1024)
                         if len(rx) == 0:
                             ssh_disconnected = True
                             break
@@ -87,27 +77,94 @@ class SWController(object):
                     output += rx
 
                 if ssh_disconnected:
-                    break
+                    return result
 
+                for c in cmd+"\n":
+                    chan.send(c)
+
+                result += output
+
+            while True:
                 try:
-                    x = self.queue.get(timeout=0.1)
-                    print x
-                    chan.send(x)
+                    rx = chan.recv(1024)
+                    if len(rx) == 0:
+                        break
                 except Exception as e:
-                    pass
-        except Exception as e:
-            logging.exception(e)
-            output = "ERROR"
+                    continue
+                result += rx
+        else:
+            for cmd in cmds:
+                for c in cmd+"\n":
+                    chan.send(c)
+                time.sleep(0.5)
+            time.sleep(1)
 
         chan.close()
         client.close()
+        return result
+
+    def get_enable_cmds(self):
+        if self.sw_admin_passwd:
+            return ["enable", self.sw_admin_passwd]
+        else:
+            return ["enable"]
+
+    def show_run(self, blank_cnt=30):
+        def _show_run(t):
+            cmds = self.get_enable_cmds()
+            cmds.append("show run")
+            for c in range(0, t):
+                cmds.append(" ")
+            cmds.append("exit")
+
+            output = self.exec_commands(cmds)
+            return output
+
+        result = _show_run(blank_cnt)
+
+        output = ""
+        in_cfg_section = False
+        for l in result.split("\n"):
+            if l.strip() == "!Current Configuration:":
+                in_cfg_section = True
+            if l.strip().endswith("#"):
+                in_cfg_section = False
+            if in_cfg_section:
+                output += l.strip()
+                output += "\n"
 
         return output
 
+    def add_simple_acl(self, name, if_name, src_ip,
+                       dst_ip, dst_mask, direction="in"):
+        cmds = self.get_enable_cmds()
+        cmds.append("conf t")
+        cmds.append("ip access-list {0} extended".format(name))
+        cmds.append("deny ip host {src_ip} {dst_ip} {dst_mask}".format(
+            src_ip=src_ip,
+            dst_ip=dst_ip,
+            dst_mask=dst_mask
+        ))
+        cmds.append("permit ip any any")
+        cmds.append("exit")
+        cmds.append("interface {0}".format(if_name))
+        cmds.append("ip access-group {name} {direction}".format(
+            name=name,
+            direction=direction
+        ))
+        cmds.append("exit")
+        cmds.append("exit")
+        cmds.append("exit")
+
+        self.exec_commands(cmds, False)
 
 if __name__ == "__main__":
-    c = SWController(sw_host="127.0.0.1",
+    c = SWController(sw_host="10.2.3.4",
                      sw_port=22,
-                     sw_user="root",
-                     sw_passwd="rootroot")
-    print c.exec_cmds(cmds=["cat /tmp/messages", "pwd", "ls"])
+                     sw_user="user",
+                     sw_passwd="tester",
+                     sw_admin_passwd="testpasswd")
+    sw_config = c.show_run()
+    c.add_simple_acl("test_acl", "gigabitethernet 1/0/14",
+                     "10.9.9.9", "192.0.0.0", "255.0.0.0",
+                     "in")
