@@ -10,9 +10,11 @@ cmds中可以加入需要在交换机上执行的命令。
     c = SWController(sw_host="172.18.9.2",
                      sw_port=22,
                      sw_user="testuser",
-                     sw_passwd="testpassword")
+                     sw_passwd="testpassword",
+                     sw_admin_passwd="enable_passwd")
     sw_config = c.show_run()
     c.add_simple_acl("test_acl", "gigabitethernet 1/0/14",
                      "10.9.9.9", "192.0.0.0", "255.0.0.0",
                      "in")
+    c.exec_commands(cmds=["enable", "123456", "show run", "exit"])
 ```
